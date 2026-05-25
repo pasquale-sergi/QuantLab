@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    container_name: quantlab-db
+    environment:
+      POSTGRES_USER: quantlab
+      POSTGRES_PASSWORD: quantlab
+      POSTGRES_DB: quantlab
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantlab -d quantlab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: quantlab-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://quantlab:quantlab@db:5432/quantlab
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
