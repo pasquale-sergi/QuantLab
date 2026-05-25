@@ -20,6 +20,20 @@ class PriceInput:
     volume: int
 
 
+class SymbolNotFoundError(ValueError):
+    def __init__(self, symbol: str) -> None:
+        super().__init__(f"Symbol '{symbol}' does not exist")
+        self.symbol = symbol
+
+
+class PriceDataNotFoundError(ValueError):
+    def __init__(self, symbol: str, start_date: date, end_date: date) -> None:
+        super().__init__(f"No price data for symbol '{symbol}' between {start_date} and {end_date}")
+        self.symbol = symbol
+        self.start_date = start_date
+        self.end_date = end_date
+
+
 class MarketDataRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -76,3 +90,40 @@ class MarketDataRepository:
 
         self.session.flush()
         return inserted, updated
+
+    def fetch_prices_for_symbol(self, symbol: str, start_date: date, end_date: date) -> list[Price]:
+        normalized_symbol = symbol.upper().strip()
+        asset = self.session.scalar(select(Asset).where(Asset.symbol == normalized_symbol))
+        if asset is None:
+            raise SymbolNotFoundError(normalized_symbol)
+
+        prices = self.session.scalars(
+            select(Price)
+            .where(
+                Price.asset_id == asset.id,
+                Price.date >= start_date,
+                Price.date <= end_date,
+            )
+            .order_by(Price.date.asc())
+        ).all()
+
+        if not prices:
+            raise PriceDataNotFoundError(normalized_symbol, start_date, end_date)
+
+        return prices
+
+    def fetch_prices_for_symbols(
+        self,
+        symbols: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> dict[str, list[Price]]:
+        data_by_symbol: dict[str, list[Price]] = {}
+        for symbol in symbols:
+            normalized_symbol = symbol.upper().strip()
+            data_by_symbol[normalized_symbol] = self.fetch_prices_for_symbol(
+                normalized_symbol,
+                start_date,
+                end_date,
+            )
+        return data_by_symbol
