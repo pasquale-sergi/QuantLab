@@ -9,3 +9,9 @@ venv/
 dist/
 build/
 *.egg-info/
+
+quantlab_dev.db
+*.db
+
+node_modules/
+frontend/dist/
