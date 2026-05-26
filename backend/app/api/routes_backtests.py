@@ -1,12 +1,15 @@
 from datetime import date
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.data.backtest_experiment_repository import BacktestExperimentNotFoundError, BacktestExperimentRepository
 from app.data.market_data_repository import MarketDataRepository, PriceDataNotFoundError, SymbolNotFoundError
 from app.db.session import get_db
 from app.engine.backtester import InvalidBacktestParameterError, run_moving_average_crossover_backtest
+from app.services.backtest_experiment_service import BacktestExperimentService, BacktestSaveRequest
 
 
 router = APIRouter(prefix="/backtests", tags=["backtests"])
@@ -60,14 +63,95 @@ class EquityPointResponse(BaseModel):
 
 
 class BacktestRunResponse(BaseModel):
+    experiment_id: int
     symbol: str
     strategy: str
     parameters: dict[str, int]
+    start_date: date
+    end_date: date
+    transaction_cost_bps: float
     initial_cash: float
     final_equity: float
     metrics: BacktestMetricsResponse
     trades: list[TradeResponse]
     equity_curve: list[EquityPointResponse]
+
+
+class BacktestExperimentListItemResponse(BaseModel):
+    experiment_id: int
+    symbol: str
+    strategy: str
+    parameters: dict[str, int]
+    start_date: date
+    end_date: date
+    initial_cash: float
+    transaction_cost_bps: float
+    final_equity: float
+    created_at: datetime
+
+
+class BacktestExperimentDetailResponse(BaseModel):
+    experiment_id: int
+    symbol: str
+    strategy: str
+    parameters: dict[str, int]
+    start_date: date
+    end_date: date
+    initial_cash: float
+    transaction_cost_bps: float
+    final_equity: float
+    created_at: datetime
+    metrics: BacktestMetricsResponse
+    trades: list[TradeResponse]
+    equity_curve: list[EquityPointResponse]
+
+
+def _metrics_response(metrics) -> BacktestMetricsResponse:
+    return BacktestMetricsResponse(
+        total_return=metrics.total_return,
+        annualized_return=metrics.annualized_return,
+        volatility=metrics.volatility,
+        annualized_volatility=metrics.annualized_volatility,
+        sharpe_ratio=metrics.sharpe_ratio,
+        max_drawdown=metrics.max_drawdown,
+        historical_var_95=metrics.historical_var_95,
+        expected_shortfall_95=metrics.expected_shortfall_95,
+    )
+
+
+def _trade_response_list(trades) -> list[TradeResponse]:
+    return [
+        TradeResponse(
+            date=trade.date,
+            symbol=trade.symbol,
+            side=trade.side,
+            price=trade.price,
+            shares=trade.shares,
+            gross_value=trade.gross_value,
+            transaction_cost=trade.transaction_cost,
+            cash_after_trade=trade.cash_after_trade,
+        )
+        for trade in trades
+    ]
+
+
+def _equity_response_list(equity_points) -> list[EquityPointResponse]:
+    return [
+        EquityPointResponse(
+            date=point.date,
+            cash=point.cash,
+            shares=point.shares,
+            close_price=point.close_price,
+            position_value=point.position_value,
+            total_equity=point.total_equity,
+            daily_return=point.daily_return,
+        )
+        for point in equity_points
+    ]
+
+
+def _experiment_service(db: Session) -> BacktestExperimentService:
+    return BacktestExperimentService(BacktestExperimentRepository(db))
 
 
 @router.post("/run", response_model=BacktestRunResponse)
@@ -99,45 +183,81 @@ def run_backtest(payload: BacktestRunRequest, db: Session = Depends(get_db)) -> 
     except InvalidBacktestParameterError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
+    service = _experiment_service(db)
+    saved_experiment = service.save_experiment(
+        BacktestSaveRequest(
+            symbol=normalized_symbol,
+            strategy=result.strategy,
+            parameters=result.parameters,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            initial_cash=payload.initial_cash,
+            transaction_cost_bps=payload.transaction_cost_bps,
+            result=result,
+        )
+    )
+
     return BacktestRunResponse(
+        experiment_id=saved_experiment.id,
         symbol=result.symbol,
         strategy=result.strategy,
         parameters=result.parameters,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        transaction_cost_bps=payload.transaction_cost_bps,
         initial_cash=result.initial_cash,
         final_equity=result.final_equity,
-        metrics=BacktestMetricsResponse(
-            total_return=result.metrics.total_return,
-            annualized_return=result.metrics.annualized_return,
-            volatility=result.metrics.volatility,
-            annualized_volatility=result.metrics.annualized_volatility,
-            sharpe_ratio=result.metrics.sharpe_ratio,
-            max_drawdown=result.metrics.max_drawdown,
-            historical_var_95=result.metrics.historical_var_95,
-            expected_shortfall_95=result.metrics.expected_shortfall_95,
-        ),
-        trades=[
-            TradeResponse(
-                date=trade.date,
-                symbol=trade.symbol,
-                side=trade.side,
-                price=trade.price,
-                shares=trade.shares,
-                gross_value=trade.gross_value,
-                transaction_cost=trade.transaction_cost,
-                cash_after_trade=trade.cash_after_trade,
-            )
-            for trade in result.trades
-        ],
-        equity_curve=[
-            EquityPointResponse(
-                date=point.date,
-                cash=point.cash,
-                shares=point.shares,
-                close_price=point.close_price,
-                position_value=point.position_value,
-                total_equity=point.total_equity,
-                daily_return=point.daily_return,
-            )
-            for point in result.equity_curve
-        ],
+        metrics=_metrics_response(result.metrics),
+        trades=_trade_response_list(result.trades),
+        equity_curve=_equity_response_list(result.equity_curve),
+    )
+
+
+@router.get("/experiments", response_model=list[BacktestExperimentListItemResponse])
+def list_backtest_experiments(db: Session = Depends(get_db)) -> list[BacktestExperimentListItemResponse]:
+    service = _experiment_service(db)
+    experiments = service.list_experiments()
+
+    return [
+        BacktestExperimentListItemResponse(
+            experiment_id=experiment.id,
+            symbol=experiment.symbol,
+            strategy=experiment.strategy,
+            parameters=experiment.parameters,
+            start_date=experiment.start_date,
+            end_date=experiment.end_date,
+            initial_cash=float(experiment.initial_cash),
+            transaction_cost_bps=float(experiment.transaction_cost_bps),
+            final_equity=float(experiment.final_equity),
+            created_at=experiment.created_at,
+        )
+        for experiment in experiments
+    ]
+
+
+@router.get("/experiments/{experiment_id}", response_model=BacktestExperimentDetailResponse)
+def get_backtest_experiment(experiment_id: int, db: Session = Depends(get_db)) -> BacktestExperimentDetailResponse:
+    service = _experiment_service(db)
+    try:
+        experiment = service.get_experiment(experiment_id)
+    except BacktestExperimentNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    if experiment.metrics is None:
+        raise HTTPException(status_code=500, detail="Experiment metrics are missing")
+
+    return BacktestExperimentDetailResponse(
+        experiment_id=experiment.id,
+        symbol=experiment.symbol,
+        strategy=experiment.strategy,
+        parameters=experiment.parameters,
+        start_date=experiment.start_date,
+        end_date=experiment.end_date,
+        initial_cash=float(experiment.initial_cash),
+        transaction_cost_bps=float(experiment.transaction_cost_bps),
+        final_equity=float(experiment.final_equity),
+        created_at=experiment.created_at,
+        metrics=_metrics_response(experiment.metrics),
+        trades=_trade_response_list(experiment.trades),
+        equity_curve=_equity_response_list(experiment.equity_curve),
     )

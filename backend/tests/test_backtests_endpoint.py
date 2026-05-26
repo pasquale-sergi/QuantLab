@@ -3,8 +3,10 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.data.market_data_repository import MarketDataRepository, PriceInput
+from app.db.models import BacktestEquityPoint, BacktestExperiment, BacktestMetric, BacktestTrade
 from app.db.session import get_db
 from app.main import app
 
@@ -55,15 +57,37 @@ def test_backtest_endpoint_response(client, db_session) -> None:
     assert response.status_code == 200
 
     body = response.json()
+    assert isinstance(body["experiment_id"], int)
     assert body["symbol"] == "AAPL"
     assert body["strategy"] == "moving_average_crossover"
     assert body["parameters"]["short_window"] == 2
     assert body["parameters"]["long_window"] == 3
+    assert body["start_date"] == "2024-01-01"
+    assert body["end_date"] == "2024-01-07"
+    assert body["transaction_cost_bps"] == 10
     assert isinstance(body["final_equity"], float)
     assert "total_return" in body["metrics"]
     assert "sharpe_ratio" in body["metrics"]
     assert len(body["equity_curve"]) == 7
     assert len(body["trades"]) >= 1
+
+    experiment_id = body["experiment_id"]
+
+    experiment = db_session.scalar(select(BacktestExperiment).where(BacktestExperiment.id == experiment_id))
+    assert experiment is not None
+    assert experiment.symbol == "AAPL"
+    assert experiment.strategy == "moving_average_crossover"
+
+    metric = db_session.scalar(select(BacktestMetric).where(BacktestMetric.experiment_id == experiment_id))
+    assert metric is not None
+
+    trades = db_session.scalars(select(BacktestTrade).where(BacktestTrade.experiment_id == experiment_id)).all()
+    assert len(trades) >= 1
+
+    equity_points = db_session.scalars(
+        select(BacktestEquityPoint).where(BacktestEquityPoint.experiment_id == experiment_id)
+    ).all()
+    assert len(equity_points) == 7
 
 
 def test_backtest_endpoint_invalid_symbol(client) -> None:
@@ -95,3 +119,43 @@ def test_backtest_endpoint_invalid_window_parameters(client, db_session) -> None
 
     response = client.post("/backtests/run", json=payload)
     assert response.status_code == 400
+
+
+def test_backtest_experiments_list_and_detail(client, db_session) -> None:
+    _seed_prices(db_session)
+    payload = {
+        "symbol": "AAPL",
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-07",
+        "strategy": "moving_average_crossover",
+        "parameters": {"short_window": 2, "long_window": 3},
+        "initial_cash": 10000,
+        "transaction_cost_bps": 10,
+    }
+
+    run_response = client.post("/backtests/run", json=payload)
+    assert run_response.status_code == 200
+    experiment_id = run_response.json()["experiment_id"]
+
+    list_response = client.get("/backtests/experiments")
+    assert list_response.status_code == 200
+    list_body = list_response.json()
+    assert len(list_body) >= 1
+    assert any(item["experiment_id"] == experiment_id for item in list_body)
+
+    detail_response = client.get(f"/backtests/experiments/{experiment_id}")
+    assert detail_response.status_code == 200
+    detail_body = detail_response.json()
+    assert detail_body["experiment_id"] == experiment_id
+    assert detail_body["symbol"] == "AAPL"
+    assert detail_body["strategy"] == "moving_average_crossover"
+    assert detail_body["parameters"]["short_window"] == 2
+    assert detail_body["parameters"]["long_window"] == 3
+    assert "total_return" in detail_body["metrics"]
+    assert len(detail_body["equity_curve"]) == 7
+    assert len(detail_body["trades"]) >= 1
+
+
+def test_backtest_experiment_detail_not_found(client) -> None:
+    response = client.get("/backtests/experiments/999999")
+    assert response.status_code == 404
