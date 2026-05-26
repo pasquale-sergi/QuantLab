@@ -81,6 +81,13 @@ class BacktestMetric(Base):
     max_drawdown: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
     historical_var_95: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
     expected_shortfall_95: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
+    number_of_trades: Mapped[int] = mapped_column(nullable=False, default=0)
+    buy_trades: Mapped[int] = mapped_column(nullable=False, default=0)
+    sell_trades: Mapped[int] = mapped_column(nullable=False, default=0)
+    time_in_market_pct: Mapped[Decimal] = mapped_column(Numeric(18, 10), nullable=False, default=0)
+    best_day: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
+    worst_day: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
+    average_daily_return: Mapped[Decimal | None] = mapped_column(Numeric(18, 10), nullable=True)
 
     experiment: Mapped[BacktestExperiment] = relationship(back_populates="metrics")
 

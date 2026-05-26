@@ -56,6 +56,13 @@ class BacktestExperimentService:
             max_drawdown=_decimal_or_none(request.result.metrics.max_drawdown),
             historical_var_95=_decimal_or_none(request.result.metrics.historical_var_95),
             expected_shortfall_95=_decimal_or_none(request.result.metrics.expected_shortfall_95),
+            number_of_trades=request.result.metrics.number_of_trades,
+            buy_trades=request.result.metrics.buy_trades,
+            sell_trades=request.result.metrics.sell_trades,
+            time_in_market_pct=_decimal(request.result.metrics.time_in_market_pct),
+            best_day=_decimal_or_none(request.result.metrics.best_day),
+            worst_day=_decimal_or_none(request.result.metrics.worst_day),
+            average_daily_return=_decimal_or_none(request.result.metrics.average_daily_return),
         )
 
         experiment.trades = [

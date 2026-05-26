@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from app.analytics.backtest_summary import calculate_backtest_summary
 from app.analytics.metrics import (
     annualized_return,
     annualized_volatility,
@@ -32,6 +33,13 @@ class BacktestMetrics:
     max_drawdown: float | None
     historical_var_95: float | None
     expected_shortfall_95: float | None
+    number_of_trades: int
+    buy_trades: int
+    sell_trades: int
+    time_in_market_pct: float
+    best_day: float | None
+    worst_day: float | None
+    average_daily_return: float | None
 
 
 @dataclass(frozen=True)
@@ -73,6 +81,7 @@ def run_moving_average_crossover_backtest(
     returns_with_dates: list[tuple[date, float | None]] = [
         (point.date, point.daily_return) for point in simulation_result.equity_curve
     ]
+    summary = calculate_backtest_summary(simulation_result.trades, simulation_result.equity_curve)
 
     metrics = BacktestMetrics(
         total_return=total_return(returns),
@@ -83,6 +92,13 @@ def run_moving_average_crossover_backtest(
         max_drawdown=max_drawdown(returns_with_dates),
         historical_var_95=historical_var_95(returns),
         expected_shortfall_95=expected_shortfall_95(returns),
+        number_of_trades=summary.number_of_trades,
+        buy_trades=summary.buy_trades,
+        sell_trades=summary.sell_trades,
+        time_in_market_pct=summary.time_in_market_pct,
+        best_day=summary.best_day,
+        worst_day=summary.worst_day,
+        average_daily_return=summary.average_daily_return,
     )
 
     final_equity = simulation_result.equity_curve[-1].total_equity if simulation_result.equity_curve else initial_cash

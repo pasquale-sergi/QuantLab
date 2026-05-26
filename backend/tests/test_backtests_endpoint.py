@@ -68,6 +68,17 @@ def test_backtest_endpoint_response(client, db_session) -> None:
     assert isinstance(body["final_equity"], float)
     assert "total_return" in body["metrics"]
     assert "sharpe_ratio" in body["metrics"]
+    assert "number_of_trades" in body["metrics"]
+    assert "buy_trades" in body["metrics"]
+    assert "sell_trades" in body["metrics"]
+    assert "time_in_market_pct" in body["metrics"]
+    assert "best_day" in body["metrics"]
+    assert "worst_day" in body["metrics"]
+    assert "average_daily_return" in body["metrics"]
+    assert body["metrics"]["number_of_trades"] >= 0
+    assert body["metrics"]["buy_trades"] >= 0
+    assert body["metrics"]["sell_trades"] >= 0
+    assert 0.0 <= body["metrics"]["time_in_market_pct"] <= 1.0
     assert len(body["equity_curve"]) == 7
     assert len(body["trades"]) >= 1
 
@@ -152,6 +163,11 @@ def test_backtest_experiments_list_and_detail(client, db_session) -> None:
     assert detail_body["parameters"]["short_window"] == 2
     assert detail_body["parameters"]["long_window"] == 3
     assert "total_return" in detail_body["metrics"]
+    assert "number_of_trades" in detail_body["metrics"]
+    assert "time_in_market_pct" in detail_body["metrics"]
+    assert "best_day" in detail_body["metrics"]
+    assert "worst_day" in detail_body["metrics"]
+    assert "average_daily_return" in detail_body["metrics"]
     assert len(detail_body["equity_curve"]) == 7
     assert len(detail_body["trades"]) >= 1
 
@@ -209,6 +225,13 @@ def test_backtest_experiments_compare_success(client, db_session) -> None:
     assert "max_drawdown" in first
     assert "historical_var_95" in first
     assert "expected_shortfall_95" in first
+    assert "number_of_trades" in first
+    assert "buy_trades" in first
+    assert "sell_trades" in first
+    assert "time_in_market_pct" in first
+    assert "best_day" in first
+    assert "worst_day" in first
+    assert "average_daily_return" in first
     assert "trades" not in first
     assert "equity_curve" not in first
 

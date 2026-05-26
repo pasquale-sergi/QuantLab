@@ -43,6 +43,13 @@ class BacktestMetricsResponse(BaseModel):
     max_drawdown: float | None
     historical_var_95: float | None
     expected_shortfall_95: float | None
+    number_of_trades: int
+    buy_trades: int
+    sell_trades: int
+    time_in_market_pct: float
+    best_day: float | None
+    worst_day: float | None
+    average_daily_return: float | None
 
 
 class TradeResponse(BaseModel):
@@ -126,6 +133,13 @@ class BacktestExperimentComparisonItemResponse(BaseModel):
     max_drawdown: float | None
     historical_var_95: float | None
     expected_shortfall_95: float | None
+    number_of_trades: int
+    buy_trades: int
+    sell_trades: int
+    time_in_market_pct: float
+    best_day: float | None
+    worst_day: float | None
+    average_daily_return: float | None
 
 
 class BacktestExperimentComparisonResponse(BaseModel):
@@ -142,6 +156,13 @@ def _metrics_response(metrics) -> BacktestMetricsResponse:
         max_drawdown=metrics.max_drawdown,
         historical_var_95=metrics.historical_var_95,
         expected_shortfall_95=metrics.expected_shortfall_95,
+        number_of_trades=metrics.number_of_trades,
+        buy_trades=metrics.buy_trades,
+        sell_trades=metrics.sell_trades,
+        time_in_market_pct=metrics.time_in_market_pct,
+        best_day=metrics.best_day,
+        worst_day=metrics.worst_day,
+        average_daily_return=metrics.average_daily_return,
     )
 
 
@@ -321,6 +342,19 @@ def compare_backtest_experiments(ids: str, db: Session = Depends(get_db)) -> Bac
                 else None,
                 expected_shortfall_95=float(experiment.metrics.expected_shortfall_95)
                 if experiment.metrics and experiment.metrics.expected_shortfall_95 is not None
+                else None,
+                number_of_trades=experiment.metrics.number_of_trades if experiment.metrics else 0,
+                buy_trades=experiment.metrics.buy_trades if experiment.metrics else 0,
+                sell_trades=experiment.metrics.sell_trades if experiment.metrics else 0,
+                time_in_market_pct=float(experiment.metrics.time_in_market_pct) if experiment.metrics else 0.0,
+                best_day=float(experiment.metrics.best_day)
+                if experiment.metrics and experiment.metrics.best_day is not None
+                else None,
+                worst_day=float(experiment.metrics.worst_day)
+                if experiment.metrics and experiment.metrics.worst_day is not None
+                else None,
+                average_daily_return=float(experiment.metrics.average_daily_return)
+                if experiment.metrics and experiment.metrics.average_daily_return is not None
                 else None,
             )
             for experiment in experiments
