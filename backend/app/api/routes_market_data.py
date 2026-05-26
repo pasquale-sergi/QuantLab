@@ -46,6 +46,10 @@ class MultiSymbolReturnsResponse(BaseModel):
     results: dict[str, list[ReturnRowResponse]]
 
 
+class IngestedSymbolsResponse(BaseModel):
+    symbols: list[str]
+
+
 @router.post("/ingest", response_model=MarketDataIngestionResponse)
 def ingest_market_data(payload: MarketDataIngestionRequest, db: Session = Depends(get_db)) -> MarketDataIngestionResponse:
     if payload.start_date > payload.end_date:
@@ -63,6 +67,13 @@ def ingest_market_data(payload: MarketDataIngestionRequest, db: Session = Depend
         start_date=result.start_date,
         end_date=result.end_date,
     )
+
+
+@router.get("/symbols", response_model=IngestedSymbolsResponse)
+def get_ingested_symbols(db: Session = Depends(get_db)) -> IngestedSymbolsResponse:
+    repository = MarketDataRepository(db)
+    symbols = repository.list_ingested_symbols()
+    return IngestedSymbolsResponse(symbols=symbols)
 
 
 @router.get("/{symbol}/returns", response_model=SymbolReturnsResponse)

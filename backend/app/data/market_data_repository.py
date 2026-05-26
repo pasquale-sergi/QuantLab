@@ -127,3 +127,6 @@ class MarketDataRepository:
                 end_date,
             )
         return data_by_symbol
+
+    def list_ingested_symbols(self) -> list[str]:
+        return self.session.scalars(select(Asset.symbol).order_by(Asset.symbol.asc())).all()

@@ -102,3 +102,19 @@ def test_multi_symbol_returns_endpoint(client, db_session) -> None:
     assert payload["results"]["AAPL"][0]["daily_return"] is None
     assert payload["results"]["AAPL"][1]["daily_return"] == 0.1
     assert payload["results"]["MSFT"][1]["daily_return"] == 0.05
+
+
+def test_get_ingested_symbols_empty(client) -> None:
+    response = client.get("/market-data/symbols")
+
+    assert response.status_code == 200
+    assert response.json() == {"symbols": []}
+
+
+def test_get_ingested_symbols_seeded(client, db_session) -> None:
+    _seed_prices(db_session)
+
+    response = client.get("/market-data/symbols")
+
+    assert response.status_code == 200
+    assert response.json() == {"symbols": ["AAPL", "MSFT"]}
