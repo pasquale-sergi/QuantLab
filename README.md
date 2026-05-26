@@ -18,6 +18,7 @@ This step includes the initial backend, returns layer, and first risk/performanc
 - Returns endpoints for one symbol and multiple symbols
 - Risk/performance metrics endpoint for one symbol
 - Drawdown series endpoint for one symbol
+- First simple backtesting engine endpoint
 
 ## Run with Docker Compose
 
@@ -108,5 +109,47 @@ Drawdown series for one symbol:
 
 ```powershell
 curl "http://localhost:8000/analytics/AAPL/drawdown?start_date=2020-01-01&end_date=2024-12-31"
+```
+
+## Backtesting Engine
+
+The backtesting engine runs a simple long-only Moving Average Crossover strategy on stored historical prices and returns:
+
+- executed trades (`BUY`/`SELL`)
+- daily equity curve (cash, shares, total equity, daily return)
+- performance/risk metrics (reusing the analytics layer)
+
+### Moving Average Crossover (Simple)
+
+- Compute short and long moving averages on close prices.
+- Generate `BUY` when short MA crosses above long MA.
+- Generate `SELL` when short MA crosses below long MA.
+- Execute signal on the next available day to avoid look-ahead bias.
+- Long-only, no leverage, full cash allocation on buy, full liquidation on sell.
+
+### Transaction Costs
+
+`transaction_cost_bps` is in basis points and is applied on both buys and sells:
+
+- `10 bps = 0.10% = 0.001`
+- cost per trade = `gross_trade_value * (transaction_cost_bps / 10000)`
+
+### Run a Backtest
+
+```powershell
+curl -X POST "http://localhost:8000/backtests/run" `
+	-H "Content-Type: application/json" `
+	-d '{
+		"symbol": "AAPL",
+		"start_date": "2020-01-01",
+		"end_date": "2024-12-31",
+		"strategy": "moving_average_crossover",
+		"parameters": {
+			"short_window": 20,
+			"long_window": 50
+		},
+		"initial_cash": 10000,
+		"transaction_cost_bps": 10
+	}'
 ```
 

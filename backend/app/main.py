@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.routes_analytics import router as analytics_router
+from app.api.routes_backtests import router as backtests_router
 from app.api.routes_market_data import router as market_data_router
 from app.db.database import Base, engine
 
@@ -20,3 +21,4 @@ def health() -> dict[str, str]:
 
 app.include_router(market_data_router)
 app.include_router(analytics_router)
+app.include_router(backtests_router)
