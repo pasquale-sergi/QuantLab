@@ -2,10 +2,19 @@
   <section class="grid" style="gap: 1rem">
     <h2>Run Backtest</h2>
 
+    <div v-if="symbolsLoading" class="notice info">Loading ingested symbols...</div>
+    <div v-else-if="symbolsError" class="notice error">{{ symbolsError }}</div>
+    <div v-else-if="availableSymbols.length === 0" class="notice info">
+      No ingested symbols found. Go to <RouterLink to="/ingest">Ingest Data</RouterLink> first.
+    </div>
+
     <form class="card grid grid-3" @submit.prevent="onSubmit">
       <div>
         <label for="symbol">Symbol</label>
-        <input id="symbol" v-model="form.symbol" required />
+        <select id="symbol" v-model="form.symbol" :disabled="symbolsLoading || availableSymbols.length === 0" required>
+          <option disabled value="">Select a symbol</option>
+          <option v-for="symbol in availableSymbols" :key="symbol" :value="symbol">{{ symbol }}</option>
+        </select>
       </div>
       <div>
         <label for="start_date">Start Date</label>
@@ -32,11 +41,21 @@
         <input id="transaction_cost_bps" v-model.number="form.transaction_cost_bps" type="number" min="0" required />
       </div>
       <div style="display: flex; align-items: end">
-        <button :disabled="loading" type="submit">{{ loading ? "Running..." : "Run Backtest" }}</button>
+        <button :disabled="loading || symbolsLoading || availableSymbols.length === 0" type="submit">
+          {{ loading ? "Running..." : "Run Backtest" }}
+        </button>
       </div>
     </form>
 
-    <div v-if="error" class="notice error">{{ error }}</div>
+    <div v-if="error" class="notice error">
+      <template v-if="isMissingSymbolError">
+        This symbol has not been ingested yet. Go to Ingest Data first, then run the backtest.
+        <RouterLink to="/ingest">Go to Ingest Data</RouterLink>
+      </template>
+      <template v-else>
+        {{ error }}
+      </template>
+    </div>
     <div v-if="loading" class="notice info">Running backtest...</div>
 
     <div v-if="result" class="grid" style="gap: 1rem">
@@ -84,13 +103,13 @@
 
 <script setup lang="ts">
 import Chart from "chart.js/auto";
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 
-import { runBacktest } from "../api/client";
+import { getIngestedSymbols, runBacktest } from "../api/client";
 import type { BacktestRunResponse } from "../types";
 
 const form = ref({
-  symbol: "SPY",
+  symbol: "",
   start_date: "2020-01-01",
   end_date: "2024-12-31",
   short_window: 20,
@@ -99,11 +118,19 @@ const form = ref({
   transaction_cost_bps: 10,
 });
 
+const availableSymbols = ref<string[]>([]);
+const symbolsLoading = ref(false);
+const symbolsError = ref<string | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const result = ref<BacktestRunResponse | null>(null);
 const equityChartRef = ref<HTMLCanvasElement | null>(null);
 let chart: Chart | null = null;
+
+const isMissingSymbolError = computed(() => {
+  const message = error.value?.toLowerCase() ?? "";
+  return message.includes("symbol") && message.includes("does not exist");
+});
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
@@ -124,6 +151,9 @@ async function onSubmit(): Promise<void> {
   result.value = null;
   loading.value = true;
   try {
+    if (!form.value.symbol) {
+      throw new Error("Please select an ingested symbol before running the backtest");
+    }
     if (form.value.short_window >= form.value.long_window) {
       throw new Error("short_window must be smaller than long_window");
     }
@@ -145,6 +175,26 @@ async function onSubmit(): Promise<void> {
     loading.value = false;
   }
 }
+
+async function loadSymbols(): Promise<void> {
+  symbolsError.value = null;
+  symbolsLoading.value = true;
+
+  try {
+    availableSymbols.value = await getIngestedSymbols();
+    if (availableSymbols.value.length > 0 && !availableSymbols.value.includes(form.value.symbol)) {
+      form.value.symbol = availableSymbols.value[0];
+    }
+  } catch (err) {
+    symbolsError.value = err instanceof Error ? err.message : "Failed to load ingested symbols";
+  } finally {
+    symbolsLoading.value = false;
+  }
+}
+
+onMounted(async () => {
+  await loadSymbols();
+});
 
 watch(result, async (newValue) => {
   if (!newValue) return;

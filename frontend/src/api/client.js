@@ -28,6 +28,16 @@ export async function runBacktest(payload) {
         body: JSON.stringify(payload),
     });
 }
+export async function ingestMarketData(payload) {
+    return request("/market-data/ingest", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+export async function getIngestedSymbols() {
+    const response = await request("/market-data/symbols");
+    return response.symbols;
+}
 export async function listExperiments() {
     return request("/backtests/experiments");
 }

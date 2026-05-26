@@ -3,6 +3,7 @@
     <header class="top-nav">
       <h1>QuantLab</h1>
       <nav>
+        <RouterLink to="/ingest">Ingest Data</RouterLink>
         <RouterLink to="/run-backtest">Run Backtest</RouterLink>
         <RouterLink to="/experiments">Experiments</RouterLink>
         <RouterLink to="/compare">Compare</RouterLink>

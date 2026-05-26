@@ -1,8 +1,8 @@
 import Chart from "chart.js/auto";
-import { nextTick, ref, watch } from "vue";
-import { runBacktest } from "../api/client";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { getIngestedSymbols, runBacktest } from "../api/client";
 const form = ref({
-    symbol: "SPY",
+    symbol: "",
     start_date: "2020-01-01",
     end_date: "2024-12-31",
     short_window: 20,
@@ -10,11 +10,18 @@ const form = ref({
     initial_cash: 10000,
     transaction_cost_bps: 10,
 });
+const availableSymbols = ref([]);
+const symbolsLoading = ref(false);
+const symbolsError = ref(null);
 const loading = ref(false);
 const error = ref(null);
 const result = ref(null);
 const equityChartRef = ref(null);
 let chart = null;
+const isMissingSymbolError = computed(() => {
+    const message = error.value?.toLowerCase() ?? "";
+    return message.includes("symbol") && message.includes("does not exist");
+});
 function formatCurrency(value) {
     return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
 }
@@ -33,6 +40,9 @@ async function onSubmit() {
     result.value = null;
     loading.value = true;
     try {
+        if (!form.value.symbol) {
+            throw new Error("Please select an ingested symbol before running the backtest");
+        }
         if (form.value.short_window >= form.value.long_window) {
             throw new Error("short_window must be smaller than long_window");
         }
@@ -56,6 +66,25 @@ async function onSubmit() {
         loading.value = false;
     }
 }
+async function loadSymbols() {
+    symbolsError.value = null;
+    symbolsLoading.value = true;
+    try {
+        availableSymbols.value = await getIngestedSymbols();
+        if (availableSymbols.value.length > 0 && !availableSymbols.value.includes(form.value.symbol)) {
+            form.value.symbol = availableSymbols.value[0];
+        }
+    }
+    catch (err) {
+        symbolsError.value = err instanceof Error ? err.message : "Failed to load ingested symbols";
+    }
+    finally {
+        symbolsLoading.value = false;
+    }
+}
+onMounted(async () => {
+    await loadSymbols();
+});
 watch(result, async (newValue) => {
     if (!newValue)
         return;
@@ -95,6 +124,33 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElemen
     ...{ style: {} },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({});
+if (__VLS_ctx.symbolsLoading) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "notice info" },
+    });
+}
+else if (__VLS_ctx.symbolsError) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "notice error" },
+    });
+    (__VLS_ctx.symbolsError);
+}
+else if (__VLS_ctx.availableSymbols.length === 0) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "notice info" },
+    });
+    const __VLS_0 = {}.RouterLink;
+    /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.RouterLink, ]} */ ;
+    // @ts-ignore
+    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+        to: "/ingest",
+    }));
+    const __VLS_2 = __VLS_1({
+        to: "/ingest",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    __VLS_3.slots.default;
+    var __VLS_3;
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.onSubmit) },
     ...{ class: "card grid grid-3" },
@@ -103,11 +159,23 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
     for: "symbol",
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+__VLS_asFunctionalElement(__VLS_intrinsicElements.select, __VLS_intrinsicElements.select)({
     id: "symbol",
+    value: (__VLS_ctx.form.symbol),
+    disabled: (__VLS_ctx.symbolsLoading || __VLS_ctx.availableSymbols.length === 0),
     required: true,
 });
-(__VLS_ctx.form.symbol);
+__VLS_asFunctionalElement(__VLS_intrinsicElements.option, __VLS_intrinsicElements.option)({
+    disabled: true,
+    value: "",
+});
+for (const [symbol] of __VLS_getVForSourceType((__VLS_ctx.availableSymbols))) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.option, __VLS_intrinsicElements.option)({
+        key: (symbol),
+        value: (symbol),
+    });
+    (symbol);
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
     for: "start_date",
@@ -176,7 +244,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
     ...{ style: {} },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-    disabled: (__VLS_ctx.loading),
+    disabled: (__VLS_ctx.loading || __VLS_ctx.symbolsLoading || __VLS_ctx.availableSymbols.length === 0),
     type: "submit",
 });
 (__VLS_ctx.loading ? "Running..." : "Run Backtest");
@@ -184,7 +252,22 @@ if (__VLS_ctx.error) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "notice error" },
     });
-    (__VLS_ctx.error);
+    if (__VLS_ctx.isMissingSymbolError) {
+        const __VLS_4 = {}.RouterLink;
+        /** @type {[typeof __VLS_components.RouterLink, typeof __VLS_components.RouterLink, ]} */ ;
+        // @ts-ignore
+        const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
+            to: "/ingest",
+        }));
+        const __VLS_6 = __VLS_5({
+            to: "/ingest",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_5));
+        __VLS_7.slots.default;
+        var __VLS_7;
+    }
+    else {
+        (__VLS_ctx.error);
+    }
 }
 if (__VLS_ctx.loading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -255,6 +338,12 @@ if (__VLS_ctx.result) {
     /** @type {typeof __VLS_ctx.equityChartRef} */ ;
 }
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['notice']} */ ;
+/** @type {__VLS_StyleScopedClasses['info']} */ ;
+/** @type {__VLS_StyleScopedClasses['notice']} */ ;
+/** @type {__VLS_StyleScopedClasses['error']} */ ;
+/** @type {__VLS_StyleScopedClasses['notice']} */ ;
+/** @type {__VLS_StyleScopedClasses['info']} */ ;
 /** @type {__VLS_StyleScopedClasses['card']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-3']} */ ;
@@ -279,10 +368,14 @@ const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             form: form,
+            availableSymbols: availableSymbols,
+            symbolsLoading: symbolsLoading,
+            symbolsError: symbolsError,
             loading: loading,
             error: error,
             result: result,
             equityChartRef: equityChartRef,
+            isMissingSymbolError: isMissingSymbolError,
             formatCurrency: formatCurrency,
             formatPct: formatPct,
             formatNum: formatNum,

@@ -4,6 +4,9 @@ import type {
   CompareExperimentsResponse,
   ExperimentDetail,
   ExperimentListItem,
+  IngestMarketDataPayload,
+  IngestMarketDataResponse,
+  IngestedSymbolsResponse,
 } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -38,6 +41,18 @@ export async function runBacktest(payload: BacktestRunPayload): Promise<Backtest
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function ingestMarketData(payload: IngestMarketDataPayload): Promise<IngestMarketDataResponse> {
+  return request<IngestMarketDataResponse>("/market-data/ingest", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getIngestedSymbols(): Promise<string[]> {
+  const response = await request<IngestedSymbolsResponse>("/market-data/symbols");
+  return response.symbols;
 }
 
 export async function listExperiments(): Promise<ExperimentListItem[]> {

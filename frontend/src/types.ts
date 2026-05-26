@@ -11,6 +11,23 @@ export type BacktestRunPayload = {
   transaction_cost_bps: number;
 };
 
+export type IngestMarketDataPayload = {
+  symbol: string;
+  start_date: string;
+  end_date: string;
+};
+
+export type IngestMarketDataResponse = {
+  symbol: string;
+  rows_inserted: number;
+  start_date: string;
+  end_date: string;
+};
+
+export type IngestedSymbolsResponse = {
+  symbols: string[];
+};
+
 export type BacktestMetrics = {
   total_return: number | null;
   annualized_return: number | null;
