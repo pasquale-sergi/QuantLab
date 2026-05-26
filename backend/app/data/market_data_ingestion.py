@@ -24,6 +24,38 @@ def _download_data(symbol: str, start_date: date, end_date: date) -> pd.DataFram
     return yf.download(symbol, start=start_date.isoformat(), end=end_date.isoformat(), progress=False)
 
 
+def _extract_value(row: pd.Series, field: str, symbol: str) -> Any:
+    if field in row.index:
+        value = row[field]
+    elif (field, symbol) in row.index:
+        value = row[(field, symbol)]
+    elif (symbol, field) in row.index:
+        value = row[(symbol, field)]
+    else:
+        matches: list[Any] = []
+        for key in row.index:
+            if not isinstance(key, tuple):
+                continue
+            if field not in key:
+                continue
+            if symbol in key:
+                matches.append(row[key])
+        if not matches:
+            for key in row.index:
+                if isinstance(key, tuple) and field in key:
+                    matches.append(row[key])
+        if not matches:
+            raise KeyError(f"Field '{field}' was not found in downloaded market data")
+        value = matches[0]
+
+    if isinstance(value, pd.Series):
+        if len(value) == 0:
+            raise ValueError(f"Field '{field}' for symbol '{symbol}' is empty")
+        value = value.iloc[0]
+
+    return value
+
+
 class MarketDataIngestionService:
     def __init__(
         self,
@@ -55,14 +87,20 @@ class MarketDataIngestionService:
 
         rows: list[PriceInput] = []
         for index, row in frame.iterrows():
+            open_value = _extract_value(row, "Open", normalized_symbol)
+            high_value = _extract_value(row, "High", normalized_symbol)
+            low_value = _extract_value(row, "Low", normalized_symbol)
+            close_value = _extract_value(row, "Close", normalized_symbol)
+            volume_value = _extract_value(row, "Volume", normalized_symbol)
+
             rows.append(
                 PriceInput(
                     date=index.date(),
-                    open=Decimal(str(float(row["Open"]))),
-                    high=Decimal(str(float(row["High"]))),
-                    low=Decimal(str(float(row["Low"]))),
-                    close=Decimal(str(float(row["Close"]))),
-                    volume=int(row["Volume"]),
+                    open=Decimal(str(float(open_value))),
+                    high=Decimal(str(float(high_value))),
+                    low=Decimal(str(float(low_value))),
+                    close=Decimal(str(float(close_value))),
+                    volume=int(volume_value),
                 )
             )
 

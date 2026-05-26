@@ -42,3 +42,41 @@ def test_ingestion_service_with_mocked_yfinance(db_session, monkeypatch) -> None
     assert asset is not None
     assert asset.name == "Apple Inc."
     assert len(prices) == 2
+
+
+def test_ingestion_service_with_multiindex_columns(db_session, monkeypatch) -> None:
+    index = pd.to_datetime(["2024-01-02", "2024-01-03"])
+    columns = pd.MultiIndex.from_tuples(
+        [
+            ("Open", "AAPL"),
+            ("High", "AAPL"),
+            ("Low", "AAPL"),
+            ("Close", "AAPL"),
+            ("Volume", "AAPL"),
+        ]
+    )
+    frame = pd.DataFrame(
+        [
+            [100.0, 102.0, 99.0, 101.5, 1000],
+            [101.0, 103.0, 100.0, 102.5, 2000],
+        ],
+        index=index,
+        columns=columns,
+    )
+
+    def mock_download(symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+        assert symbol == "AAPL"
+        assert start_date == date(2024, 1, 1)
+        assert end_date == date(2024, 1, 4)
+        return frame
+
+    class MockTicker:
+        info = {"shortName": "Apple Inc."}
+
+    monkeypatch.setattr("app.data.market_data_ingestion.yf.Ticker", lambda _: MockTicker())
+
+    service = MarketDataIngestionService(db_session, download_func=mock_download)
+    result = service.ingest("AAPL", date(2024, 1, 1), date(2024, 1, 4))
+
+    assert result.symbol == "AAPL"
+    assert result.rows_inserted == 2
