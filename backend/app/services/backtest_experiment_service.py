@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from app.data.backtest_experiment_repository import BacktestExperimentRepository
+from app.data.backtest_experiment_repository import BacktestExperimentRepository, BacktestExperimentsNotFoundError
 from app.db.models import BacktestEquityPoint, BacktestExperiment, BacktestMetric, BacktestTrade
 from app.engine.backtester import BacktestResult
 
@@ -95,3 +95,11 @@ class BacktestExperimentService:
 
     def get_experiment(self, experiment_id: int) -> BacktestExperiment:
         return self.repository.get_by_id(experiment_id)
+
+    def compare_experiments(self, experiment_ids: list[int]) -> list[BacktestExperiment]:
+        experiments = self.repository.get_by_ids_with_metrics(experiment_ids)
+        found_ids = {experiment.id for experiment in experiments}
+        missing_ids = [experiment_id for experiment_id in experiment_ids if experiment_id not in found_ids]
+        if missing_ids:
+            raise BacktestExperimentsNotFoundError(missing_ids)
+        return experiments

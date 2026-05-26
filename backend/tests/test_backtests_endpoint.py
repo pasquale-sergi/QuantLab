@@ -159,3 +159,81 @@ def test_backtest_experiments_list_and_detail(client, db_session) -> None:
 def test_backtest_experiment_detail_not_found(client) -> None:
     response = client.get("/backtests/experiments/999999")
     assert response.status_code == 404
+
+
+def test_backtest_experiments_compare_success(client, db_session) -> None:
+    _seed_prices(db_session)
+
+    payload_one = {
+        "symbol": "AAPL",
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-07",
+        "strategy": "moving_average_crossover",
+        "parameters": {"short_window": 2, "long_window": 3},
+        "initial_cash": 10000,
+        "transaction_cost_bps": 10,
+    }
+    payload_two = {
+        "symbol": "AAPL",
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-07",
+        "strategy": "moving_average_crossover",
+        "parameters": {"short_window": 1, "long_window": 4},
+        "initial_cash": 12000,
+        "transaction_cost_bps": 5,
+    }
+
+    response_one = client.post("/backtests/run", json=payload_one)
+    response_two = client.post("/backtests/run", json=payload_two)
+    assert response_one.status_code == 200
+    assert response_two.status_code == 200
+
+    experiment_id_one = response_one.json()["experiment_id"]
+    experiment_id_two = response_two.json()["experiment_id"]
+
+    compare_response = client.get(f"/backtests/experiments/compare?ids={experiment_id_one},{experiment_id_two}")
+    assert compare_response.status_code == 200
+
+    body = compare_response.json()
+    assert "experiments" in body
+    assert len(body["experiments"]) == 2
+
+    first = body["experiments"][0]
+    assert first["experiment_id"] == experiment_id_one
+    assert first["symbol"] == "AAPL"
+    assert first["strategy"] == "moving_average_crossover"
+    assert "total_return" in first
+    assert "annualized_return" in first
+    assert "annualized_volatility" in first
+    assert "sharpe_ratio" in first
+    assert "max_drawdown" in first
+    assert "historical_var_95" in first
+    assert "expected_shortfall_95" in first
+    assert "trades" not in first
+    assert "equity_curve" not in first
+
+
+def test_backtest_experiments_compare_missing_id_returns_404(client, db_session) -> None:
+    _seed_prices(db_session)
+    payload = {
+        "symbol": "AAPL",
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-07",
+        "strategy": "moving_average_crossover",
+        "parameters": {"short_window": 2, "long_window": 3},
+        "initial_cash": 10000,
+        "transaction_cost_bps": 10,
+    }
+
+    run_response = client.post("/backtests/run", json=payload)
+    assert run_response.status_code == 200
+    existing_id = run_response.json()["experiment_id"]
+
+    compare_response = client.get(f"/backtests/experiments/compare?ids={existing_id},999999")
+    assert compare_response.status_code == 404
+    assert "not found" in compare_response.json()["detail"].lower()
+
+
+def test_backtest_experiments_compare_empty_ids_returns_400(client) -> None:
+    response = client.get("/backtests/experiments/compare?ids=")
+    assert response.status_code == 400

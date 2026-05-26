@@ -12,6 +12,13 @@ class BacktestExperimentNotFoundError(ValueError):
         self.experiment_id = experiment_id
 
 
+class BacktestExperimentsNotFoundError(ValueError):
+    def __init__(self, missing_ids: list[int]) -> None:
+        missing = ", ".join(str(experiment_id) for experiment_id in missing_ids)
+        super().__init__(f"Backtest experiments not found for ids: {missing}")
+        self.missing_ids = missing_ids
+
+
 class BacktestExperimentRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -40,3 +47,16 @@ class BacktestExperimentRepository:
         if experiment is None:
             raise BacktestExperimentNotFoundError(experiment_id)
         return experiment
+
+    def get_by_ids_with_metrics(self, experiment_ids: list[int]) -> list[BacktestExperiment]:
+        if not experiment_ids:
+            return []
+
+        experiments = self.session.scalars(
+            select(BacktestExperiment)
+            .options(selectinload(BacktestExperiment.metrics))
+            .where(BacktestExperiment.id.in_(experiment_ids))
+        ).all()
+
+        experiments_by_id = {experiment.id: experiment for experiment in experiments}
+        return [experiments_by_id[experiment_id] for experiment_id in experiment_ids if experiment_id in experiments_by_id]

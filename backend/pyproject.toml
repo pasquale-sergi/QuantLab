@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "quantlab-backend"
 version = "0.1.0"
-description = "QuantLab backend ingestion and persistence layer"
+description = "QuantLab backend for market data ingestion, risk analytics, backtesting, and experiment tracking"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115.0",

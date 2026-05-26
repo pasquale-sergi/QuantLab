@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.data.backtest_experiment_repository import BacktestExperimentNotFoundError, BacktestExperimentRepository
+from app.data.backtest_experiment_repository import (
+    BacktestExperimentNotFoundError,
+    BacktestExperimentRepository,
+    BacktestExperimentsNotFoundError,
+)
 from app.data.market_data_repository import MarketDataRepository, PriceDataNotFoundError, SymbolNotFoundError
 from app.db.session import get_db
 from app.engine.backtester import InvalidBacktestParameterError, run_moving_average_crossover_backtest
@@ -106,6 +110,28 @@ class BacktestExperimentDetailResponse(BaseModel):
     equity_curve: list[EquityPointResponse]
 
 
+class BacktestExperimentComparisonItemResponse(BaseModel):
+    experiment_id: int
+    symbol: str
+    strategy: str
+    parameters: dict[str, int]
+    start_date: date
+    end_date: date
+    initial_cash: float
+    final_equity: float
+    total_return: float | None
+    annualized_return: float | None
+    annualized_volatility: float | None
+    sharpe_ratio: float | None
+    max_drawdown: float | None
+    historical_var_95: float | None
+    expected_shortfall_95: float | None
+
+
+class BacktestExperimentComparisonResponse(BaseModel):
+    experiments: list[BacktestExperimentComparisonItemResponse]
+
+
 def _metrics_response(metrics) -> BacktestMetricsResponse:
     return BacktestMetricsResponse(
         total_return=metrics.total_return,
@@ -152,6 +178,27 @@ def _equity_response_list(equity_points) -> list[EquityPointResponse]:
 
 def _experiment_service(db: Session) -> BacktestExperimentService:
     return BacktestExperimentService(BacktestExperimentRepository(db))
+
+
+def _parse_experiment_ids(ids: str) -> list[int]:
+    raw_items = [item.strip() for item in ids.split(",") if item.strip()]
+    if not raw_items:
+        raise HTTPException(status_code=400, detail="ids query parameter must contain at least one ID")
+
+    parsed_ids: list[int] = []
+    for raw_item in raw_items:
+        try:
+            parsed_id = int(raw_item)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=f"Invalid experiment ID '{raw_item}'") from error
+
+        if parsed_id <= 0:
+            raise HTTPException(status_code=400, detail="Experiment IDs must be positive integers")
+
+        if parsed_id not in parsed_ids:
+            parsed_ids.append(parsed_id)
+
+    return parsed_ids
 
 
 @router.post("/run", response_model=BacktestRunResponse)
@@ -233,6 +280,52 @@ def list_backtest_experiments(db: Session = Depends(get_db)) -> list[BacktestExp
         )
         for experiment in experiments
     ]
+
+
+@router.get("/experiments/compare", response_model=BacktestExperimentComparisonResponse)
+def compare_backtest_experiments(ids: str, db: Session = Depends(get_db)) -> BacktestExperimentComparisonResponse:
+    experiment_ids = _parse_experiment_ids(ids)
+    service = _experiment_service(db)
+
+    try:
+        experiments = service.compare_experiments(experiment_ids)
+    except BacktestExperimentsNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return BacktestExperimentComparisonResponse(
+        experiments=[
+            BacktestExperimentComparisonItemResponse(
+                experiment_id=experiment.id,
+                symbol=experiment.symbol,
+                strategy=experiment.strategy,
+                parameters=experiment.parameters,
+                start_date=experiment.start_date,
+                end_date=experiment.end_date,
+                initial_cash=float(experiment.initial_cash),
+                final_equity=float(experiment.final_equity),
+                total_return=float(experiment.metrics.total_return) if experiment.metrics and experiment.metrics.total_return is not None else None,
+                annualized_return=float(experiment.metrics.annualized_return)
+                if experiment.metrics and experiment.metrics.annualized_return is not None
+                else None,
+                annualized_volatility=float(experiment.metrics.annualized_volatility)
+                if experiment.metrics and experiment.metrics.annualized_volatility is not None
+                else None,
+                sharpe_ratio=float(experiment.metrics.sharpe_ratio)
+                if experiment.metrics and experiment.metrics.sharpe_ratio is not None
+                else None,
+                max_drawdown=float(experiment.metrics.max_drawdown)
+                if experiment.metrics and experiment.metrics.max_drawdown is not None
+                else None,
+                historical_var_95=float(experiment.metrics.historical_var_95)
+                if experiment.metrics and experiment.metrics.historical_var_95 is not None
+                else None,
+                expected_shortfall_95=float(experiment.metrics.expected_shortfall_95)
+                if experiment.metrics and experiment.metrics.expected_shortfall_95 is not None
+                else None,
+            )
+            for experiment in experiments
+        ]
+    )
 
 
 @router.get("/experiments/{experiment_id}", response_model=BacktestExperimentDetailResponse)
